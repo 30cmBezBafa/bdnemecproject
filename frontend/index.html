@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VIN Normy — просмотр комплектаций</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:#101826; --line:#2b3a55; --txt:#e6edf7;
+    --mut:#9fb0c9; --acc:#2563eb; --ok:#16a34a; --warn:#fbbf24; --bad:#ef4444;
+    --r:.75rem;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f4f6fb; --panel:#fff; --line:#d6deeb; --txt:#0b1220; --mut:#5b6b82; }
+  }
+  *{box-sizing:border-box}
+  html{font-size:16px}
+  body{margin:0;background:var(--bg);color:var(--txt);
+       font:1rem/1.45 system-ui,Segoe UI,Arial,sans-serif}
+  header{padding:1rem 1.25rem;border-bottom:1px solid var(--line);
+         display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;justify-content:space-between}
+  header h1{font-size:1.15rem;margin:0}
+  header .sub{color:var(--mut);font-size:.85rem}
+  main{display:grid;grid-template-columns:minmax(280px,34%) 1fr;gap:1rem;padding:1rem 1.25rem}
+  @media (max-width:820px){ main{grid-template-columns:1fr} }
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:1rem}
+  label{display:block;font-size:.8rem;color:var(--mut);margin:.5rem 0 .2rem}
+  input,select,button{font:inherit;color:var(--txt);background:#0b1220;
+        border:1px solid var(--line);border-radius:.5rem;padding:.5rem .6rem;width:100%}
+  @media (prefers-color-scheme: light){ input,select{background:#fff} }
+  button{cursor:pointer;background:var(--acc);border:0;color:#fff;font-weight:600}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt);font-weight:500}
+  .row{display:flex;gap:.5rem}.row>*{flex:1}
+  ul.list{list-style:none;margin:.75rem 0 0;padding:0;max-height:60vh;overflow:auto}
+  ul.list li{padding:.55rem .6rem;border:1px solid var(--line);border-radius:.5rem;margin-bottom:.4rem;cursor:pointer}
+  ul.list li:hover,ul.list li[aria-selected="true"]{border-color:var(--acc);background:#12203a}
+  .vin{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:600;letter-spacing:.02em}
+  .meta{color:var(--mut);font-size:.82rem;margin-top:.15rem}
+  .pill{display:inline-block;font-size:.72rem;padding:.1rem .45rem;border-radius:999px;border:1px solid var(--line);color:var(--mut)}
+  .pill.ok{color:var(--ok);border-color:var(--ok)} .pill.warn{color:var(--warn);border-color:var(--warn)} .pill.bad{color:var(--bad);border-color:var(--bad)}
+  dl.specs{display:grid;grid-template-columns:auto 1fr;gap:.25rem .8rem;margin:0 0 1rem}
+  dl.specs dt{color:var(--mut);font-size:.85rem} dl.specs dd{margin:0}
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--panel)}
+  td.code{font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
+  .empty{color:var(--mut);padding:1rem;text-align:center}
+  footer{padding:1rem 1.25rem;color:var(--mut);font-size:.8rem;border-top:1px solid var(--line)}
+  .toolbar{display:flex;gap:.5rem;flex-wrap:wrap;margin:.5rem 0 0}
+  .toolbar button{width:auto}
+  progress{width:100%;height:.35rem;accent-color:var(--acc)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>VIN Normy — просмотр комплектаций</h1>
+    <div class="sub">Читает Supabase напрямую (read-only). Данные: <span id="dbState">—</span></div>
+  </div>
+  <button class="ghost" id="btnCfg" style="width:auto">⚙ Подключение</button>
+</header>
+
+<main>
+  <!-- Левая колонка: подключение + список -->
+  <section class="card" aria-label="Список автомобилей">
+    <div id="cfgBox" hidden>
+      <label for="fUrl">Project URL</label>
+      <input id="fUrl" placeholder="https://xxxx.supabase.co" autocomplete="off">
+      <label for="fKey">Anon / Publishable key</label>
+      <input id="fKey" placeholder="eyJ... или sb_publishable_..." autocomplete="off">
+      <div class="row" style="margin-top:.6rem">
+        <button id="btnSave">Сохранить</button>
+        <button class="ghost" id="btnLoad">Загрузить список</button>
+      </div>
+      <progress id="pg" value="0" max="1" hidden></progress>
+    </div>
+
+    <label for="fSearch">Поиск по VIN / модели</label>
+    <input id="fSearch" placeholder="XW8… или Polo" autocomplete="off">
+    <div class="toolbar">
+      <select id="fBrand" aria-label="Фильтр по бренду"><option value="">Все бренды</option></select>
+      <button class="ghost" id="btnRefresh" style="width:auto">↻</button>
+    </div>
+    <ul class="list" id="list" role="listbox" aria-label="Автомобили"></ul>
+    <div class="meta" id="count"></div>
+  </section>
+
+  <!-- Правая колонка: карточка -->
+  <article class="card" id="detail" aria-live="polite">
+    <div class="empty">Выбери автомобиль слева, чтобы увидеть комплектацию.</div>
+  </article>
+</main>
+
+<footer>
+  Просмотрщик комплектаций v0.1 · read-only · HTML-дамп идентификации открывается по кнопке в карточке.
+</footer>
+
+<script>
+"use strict";
+/* ------------------------- Supabase REST (anon) ------------------------- */
+const LS_URL="vna_sb_url", LS_KEY="vna_sb_anon";
+const $=s=>document.querySelector(s);
+let CFG={url:localStorage.getItem(LS_URL)||"", anon:localStorage.getItem(LS_KEY)||""};
+let ALL=[]; // загруженный список vehicles (лёгкие колонки)
+
+function restHeaders(extra={}){
+  return Object.assign({"apikey":CFG.anon,"Accept":"application/json","Content-Type":"application/json"},extra);
+}
+async function sbGet(path){
+  if(!CFG.url||!CFG.anon) throw new Error("no-config");
+  const r=await fetch(CFG.url+path,{headers:restHeaders()});
+  if(!r.ok) throw new Error("HTTP "+r.status+" "+(await r.text()).slice(0,200));
+  return r.json();
+}
+function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function confPill(c){
+  const n=Number(c)||0;
+  const cls=n>=0.8?"ok":n>=0.5?"warn":"bad";
+  return `<span class="pill ${cls}">conf ${n.toFixed(2)}</span>`;
+}
+
+/* ------------------------------ Подключение ----------------------------- */
+function syncCfgUI(){ $("#fUrl").value=CFG.url; $("#fKey").value=CFG.anon; }
+$("#btnCfg").onclick=()=>{ const b=$("#cfgBox"); b.hidden=!b.hidden; syncCfgUI(); };
+$("#btnSave").onclick=()=>{
+  CFG.url=$("#fUrl").value.trim().replace(/\/+$/,"");
+  CFG.anon=$("#fKey").value.trim();
+  localStorage.setItem(LS_URL,CFG.url); localStorage.setItem(LS_KEY,CFG.anon);
+  loadList();
+};
+$("#btnLoad").onclick=loadList;
+$("#btnRefresh").onclick=loadList;
+
+/* -------------------------------- Список -------------------------------- */
+async function loadList(){
+  if(!CFG.url||!CFG.anon){ $("#dbState").textContent="не задано — ⚙ Подключение"; return; }
+  $("#pg").hidden=false; $("#dbState").textContent="загрузка…";
+  try{
+    // лёгкие колонки: equipment/payload НЕ тянем в списке (они большие)
+    const rows=await sbGet("/rest/v1/vehicles?select=vin,brand_code,model,generation,model_year,engine_code,gearbox_code,drive,status,confidence,missing&order=model_year.desc.nullslast,brand_code.asc&limit=1000");
+    ALL=Array.isArray(rows)?rows:[];
+    buildBrandFilter();
+    renderList();
+    $("#dbState").textContent="OK · "+ALL.length+" авто";
+  }catch(e){
+    $("#dbState").textContent="ошибка: "+e.message;
+    $("#list").innerHTML=`<li class="empty" style="cursor:default">Не удалось прочитать базу.<br>${esc(e.message)}</li>`;
+  }finally{ $("#pg").hidden=true; }
+}
+function buildBrandFilter(){
+  const sel=$("#fBrand"); const cur=sel.value;
+  const brands=[...new Set(ALL.map(v=>v.brand_code).filter(Boolean))].sort();
+  sel.innerHTML=`<option value="">Все бренды</option>`+brands.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join("");
+  sel.value=cur;
+}
+function filtered(){
+  const q=$("#fSearch").value.trim().toUpperCase();
+  const b=$("#fBrand").value;
+  return ALL.filter(v=>{
+    if(b && v.brand_code!==b) return false;
+    if(!q) return true;
+    return (v.vin||"").includes(q) || (v.model||"").toUpperCase().includes(q) || (v.generation||"").toUpperCase().includes(q);
+  });
+}
+function renderList(){
+  const data=filtered();
+  $("#count").textContent=`показано ${data.length} из ${ALL.length}`;
+  if(!data.length){ $("#list").innerHTML=`<li class="empty" style="cursor:default">Ничего не найдено.</li>`; return; }
+  $("#list").innerHTML=data.map(v=>`
+    <li role="option" tabindex="0" data-vin="${esc(v.vin)}" aria-selected="false">
+      <div class="vin">${esc(v.vin)}</div>
+      <div class="meta">${esc(v.brand_code||"—")} · ${esc(v.model||"—")} ${v.model_year?v.model_year:""} · ${esc(v.engine_code||"—")}/${esc(v.gearbox_code||"—")}</div>
+      <div class="meta">${confPill(v.confidence)} <span class="pill">${esc(v.status)}</span></div>
+    </li>`).join("");
+  $("#list").querySelectorAll("li[data-vin]").forEach(li=>{
+    li.onclick=()=>openDetail(li.dataset.vin, li);
+    li.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); li.onclick(); } };
+  });
+}
+$("#fSearch").oninput=renderList;
+$("#fBrand").onchange=renderList;
+
+/* ------------------------------- Карточка ------------------------------- */
+async function openDetail(vin, li){
+  $("#list").querySelectorAll("li").forEach(x=>x.setAttribute("aria-selected", x===li?"true":"false"));
+  const d=$("#detail");
+  d.innerHTML=`<div class="empty">Загрузка комплектации ${esc(vin)}…</div>`;
+  try{
+    // equipment тянем только здесь (детальный запрос по одному VIN)
+    const rows=await sbGet(`/rest/v1/vehicles?vin=eq.${encodeURIComponent(vin)}&select=vin,brand_code,model,generation,model_year,engine_code,gearbox_code,drive,specs,equipment,missing,confidence,status,production_date&limit=1`);
+    const v=Array.isArray(rows)?rows[0]:null;
+    if(!v){ d.innerHTML=`<div class="empty">Карточка не найдена.</div>`; return; }
+    d.innerHTML=renderCard(v);
+    bindCardButtons(v.vin);
+  }catch(e){ d.innerHTML=`<div class="empty">Ошибка: ${esc(e.message)}</div>`; }
+}
+function renderCard(v){
+  const sp=v.specs||{}; const eq=Array.isArray(v.equipment)?v.equipment:[];
+  const miss=Array.isArray(v.missing)?v.missing:[];
+  const specRow=(k,l)=> sp[k]!=null&&sp[k]!==""&&sp[k]!==0 ? `<dt>${l}</dt><dd>${esc(sp[k])}</dd>` : "";
+  const specsHtml=[
+    specRow("make","Марка/модель (из дампа)"),
+    specRow("generation","Поколение"),
+    specRow("engine_desc","Двигатель (расшифровка)"),
+    specRow("timing_drive","ГРМ (ремень/цепь)"),
+    specRow("displacement_cc","Объём, см³"),
+    specRow("power_kw","Мощность, кВт"), specRow("power_hp","л.с."), specRow("torque_nm","Момент, Н·м"),
+    specRow("fuel","Топливо"),
+    specRow("gearbox_marker","КПП (маркер)"), specRow("gearbox_type","КПП тип"), specRow("gearbox_gears","Передач"),
+    specRow("drive","Привод"), specRow("awd_type","Тип AWD"),
+    specRow("brakes_front","Тормоза перед"), specRow("brakes_rear","Тормоза зад"),
+    specRow("susp_front","Подвеска перед"), specRow("susp_rear","Подвеска зад"),
+    specRow("handbrake","Ручник"), specRow("steering","Рулевое"),
+    specRow("climate_present","Климат"), specRow("body_type","Кузов"), specRow("doors","Дверей"),
+    specRow("production_date","Дата производства"), specRow("trade_code","Торг. обозн. (vtyp)")
+  ].join("");
+  const eqHtml = eq.length
+    ? `<table><thead><tr><th>Группа</th><th>PR</th><th>Обозначение</th></tr></thead><tbody>`+
+      eq.map(e=>`<tr><td>${esc(e.group)}</td><td class="code">${esc(e.code)}</td><td>${esc(e.text)}</td></tr>`).join("")+
+      `</tbody></table>`
+    : `<div class="empty">В карточке нет структурированной комплектации (equipment пуст). Открой HTML-дамп ниже — там всё есть.</div>`;
+  return `
+    <div class="toolbar" style="margin:0 0 .75rem">
+      <span class="vin" style="font-size:1.05rem">${esc(v.vin)}</span>
+      ${confPill(v.confidence)} <span class="pill">${esc(v.status)}</span>
+      <span class="pill">${eq.length} PR-позиций</span>
+    </div>
+    <div class="toolbar">
+      <button id="btnHtml" style="width:auto">📄 Открыть HTML-дамп комплектации</button>
+      <button class="ghost" id="btnCopy" style="width:auto">⧉ VIN</button>
+    </div>
+    <h2 style="font-size:1rem;margin:1rem 0 .4rem">Нормо-ядро (specs)</h2>
+    <dl class="specs">${specsHtml||`<dt>—</dt><dd>specs пусты</dd>`}</dl>
+    ${miss.length?`<div class="meta" style="margin-bottom:.75rem">Не хватает для точного матчинга: ${miss.map(m=>`<span class="pill warn">${esc(m)}</span>`).join(" ")}</div>`:""}
+    <h2 style="font-size:1rem;margin:1rem 0 .4rem">Комплектация (equipment, из дампа)</h2>
+    <div style="max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:.5rem">
+      ${eqHtml}
+    </div>`;
+}
+function bindCardButtons(vin){
+  $("#btnCopy").onclick=()=>navigator.clipboard?.writeText(vin).then(()=>flash($("#btnCopy"),"✓ скопировано"));
+  $("#btnHtml").onclick=()=>openPayload(vin);
+}
+function flash(btn,txt){ const o=btn.textContent; btn.textContent=txt; setTimeout(()=>btn.textContent=o,1200); }
+
+/* --------- HTML-дамп идентификации (source_snapshots.payload) ---------- */
+async function openPayload(vin){
+  try{
+    const rows=await sbGet(`/rest/v1/source_snapshots?vin=eq.${encodeURIComponent(vin)}&source_type=eq.superetka_elsa_ident&select=payload,collected_at&order=collected_at.desc&limit=1`);
+    const s=Array.isArray(rows)?rows[0]:null;
+    if(!s||!s.payload){ alert("Для этого VIN нет сохранённого HTML-дампа (снап не залился или это не VAG/Porsche)."); return; }
+    const blob=new Blob([s.payload],{type:"text/html;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const w=window.open(url,"_blank");
+    if(!w) alert("Браузер заблокировал новое окно — разреши popup для этого сайта.");
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e){ alert("Ошибка чтения дампа: "+e.message); }
+}
+
+/* --------------------------------- init --------------------------------- */
+syncCfgUI();
+if(CFG.url&&CFG.anon) loadList();
+else { $("#dbState").textContent="не задано — нажми ⚙ Подключение"; $("#cfgBox").hidden=false; }
+</script>
+</body>
+</html>
