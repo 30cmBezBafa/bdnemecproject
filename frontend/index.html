@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VIN Normy — просмотр комплектаций</title>
+<title>VIN Normy — просмотр комплектаций (v0.2)</title>
 <style>
   :root{
     --bg:#0b1220; --panel:#101826; --line:#2b3a55; --txt:#e6edf7;
@@ -92,7 +92,7 @@
 </main>
 
 <footer>
-  Просмотрщик комплектаций v0.1 · read-only · HTML-дамп идентификации открывается по кнопке в карточке.
+  Просмотрщик комплектаций v0.2 · read-only · HTML-дамп идентификации открывается по кнопке в карточке.
 </footer>
 
 <script>
@@ -187,7 +187,7 @@ async function openDetail(vin, li){
   d.innerHTML=`<div class="empty">Загрузка комплектации ${esc(vin)}…</div>`;
   try{
     // equipment тянем только здесь (детальный запрос по одному VIN)
-    const rows=await sbGet(`/rest/v1/vehicles?vin=eq.${encodeURIComponent(vin)}&select=vin,brand_code,model,generation,model_year,engine_code,gearbox_code,drive,specs,equipment,missing,confidence,status,production_date&limit=1`);
+    const rows=await sbGet(`/rest/v1/vehicles?vin=eq.${encodeURIComponent(vin)}&select=vin,brand_code,model,generation,model_year,engine_code,gearbox_code,drive,specs,equipment,missing,confidence,status&limit=1`);
     const v=Array.isArray(rows)?rows[0]:null;
     if(!v){ d.innerHTML=`<div class="empty">Карточка не найдена.</div>`; return; }
     d.innerHTML=renderCard(v);
